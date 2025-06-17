@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: gateway-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      serviceAccountName: gateway-service-account
+      containers:
+        - name: api-gateway
+          image: image
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 5005
+              name: debug
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "k8s"
+            - name: JAVA_OPTS
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseStringDeduplication --enable-preview"
+            - name: REDIS_HOST
+              value: "redis-host"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: GATEWAY_RATELIMIT_ENABLED
+              value: "true"
+            - name: GATEWAY_RATELIMIT_CAPACITY
+              value: "1000"
+            - name: GATEWAY_RATELIMIT_REFILL_RATE
+              value: "100"
+            - name: GATEWAY_RATELIMIT_FAIL_OPEN
+              value: "true"
+            - name: GATEWAY_DISCOVERY_TYPE
+              value: "kubernetes"
+            - name: GATEWAY_K8S_NAMESPACE
+              value: "services"
+            - name: GATEWAY_LOG_LEVEL
+              value: "INFO"
+            - name: GATEWAY_HEALTH_CHECK_INTERVAL
+              value: "30000"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+            - name: ratelimit-config-volume
+              mountPath: /config/ratelimit
+          resources:
+            requests:
+              memory: "700Mi"
+              cpu: "300m"
+            limits:
+              memory: "1.5Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+      volumes:
+        - name: config-volume
+          configMap:
+            name: gateway-config
+        - name: ratelimit-config-volume
+          configMap:
+            name: gateway-ratelimit-config

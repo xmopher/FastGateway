@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - gateway-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway - 本地开发版本
+  api-gateway-local:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+      - "5005:5005"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GATEWAY_RATELIMIT_ENABLED=true
+      - GATEWAY_RATELIMIT_CAPACITY=1000
+      - GATEWAY_RATELIMIT_REFILL_RATE=100
+      - GATEWAY_DISCOVERY_TYPE=memory
+      - GATEWAY_LOG_LEVEL=DEBUG
+      - JAVA_OPTS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gateway-network
+    volumes:
+      - ./logs:/app/logs
+      - ./src:/app/src:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 模拟后端服务进行测试
+  mock-user-service:
+    image: nginx:alpine
+    ports:
+      - "8081:80"
+    volumes:
+      - ./test/mock-responses:/usr/share/nginx/html
+    networks:
+      - gateway-network
+
+  mock-product-service:
+    image: nginx:alpine
+    ports:
+      - "8082:80"
+    volumes:
+      - ./test/mock-responses:/usr/share/nginx/html
+    networks:
+      - gateway-network
+
+volumes:
+  redis-data:
+
+networks:
+  gateway-network:
+    driver: bridge

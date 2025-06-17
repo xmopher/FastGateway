@@ -1,0 +1,120 @@
+server:
+  port: 8080
+  # SSL Configuration
+  ssl:
+    enabled: ${SSL_ENABLED:false}
+    key-store: ${SSL_KEYSTORE_PATH:classpath:keystore.p12}
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:123}
+    key-store-type: PKCS12
+    key-alias: gateway
+    protocol: TLS
+    protocols: TLS1.2,TLS1.3
+    ciphers:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_AES_128_GCM_SHA256
+      - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+      - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+  # HTTP/2 Support
+  http2:
+    enabled: true
+  # Compression
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+  # Tomcat Configuration
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+    connection-timeout: 20000ms
+    keep-alive-timeout: 20000ms
+    max-connections: 8192
+
+spring:
+  application:
+    name: gateway-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:k8s}
+
+  # Redis Configuration for Spring Boot 3.x
+  data:
+    redis:
+      host: ${REDIS_HOST:master.agent-test-1.fcncp4.usw2.cache.amazonaws.com}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+  # Jackson Configuration
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+# Gateway Configuration
+gateway:
+  ratelimit:
+    enabled: ${GATEWAY_RATELIMIT_ENABLED:true}
+    default-algorithm: tokenBucket
+    default-capacity: ${GATEWAY_RATELIMIT_CAPACITY:1000}
+    default-refill-rate: ${GATEWAY_RATELIMIT_REFILL_RATE:100}
+    default-window-size-ms: 60000
+    fail-open: ${GATEWAY_RATELIMIT_FAIL_OPEN:true}
+
+  loadbalancer:
+    default-strategy: roundRobin
+    health-check-interval-ms: ${GATEWAY_HEALTH_CHECK_INTERVAL:30000}
+    connection-timeout-ms: 5000
+    read-timeout-ms: 10000
+    enable-circuit-breaker: true
+    service-strategies:
+      user-service: weightedRoundRobin
+      product-service: leastConnections
+
+  discovery:
+    type: ${GATEWAY_DISCOVERY_TYPE:memory}
+    kubernetes:
+      namespace: ${GATEWAY_K8S_NAMESPACE:services}
+      label-selector: gateway.enabled=true
+      service-port: 8080
+      health-check-path: /actuator/health
+
+# Management and Monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+  info:
+    env:
+      enabled: true
+    java:
+      enabled: true
+    os:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# Logging Configuration
+logging:
+  level:
+    com.company.gateway: ${GATEWAY_LOG_LEVEL:INFO}
+    org.springframework.web: INFO
+    reactor.netty.http.client: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: ${GATEWAY_LOG_FILE:logs/gateway.log}

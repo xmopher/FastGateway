@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-ratelimit-config
+  namespace: gateway-system
+data:
+  ratelimit-rules.yml: |
+    global:
+      default-capacity: 1000
+      default-refill-rate: 100
+      default-burst-capacity: 200
+  
+    endpoints:
+      - path: "/api/some-service/**"
+        method: ["GET"]
+        capacity: 500
+        refill-rate: 50
+        burst-capacity: 100
+        window: "1m"
+    
+    user-tiers:
+      basic:
+        daily-limit: 10000
+        hourly-limit: 1000
+        minute-limit: 100
+        burst-capacity: 200
+    
+    services:
+      ai-agent-storage-service:
+        total-capacity: 1000
+        per-instance-capacity: 333
+        health-check-capacity: 10
+    
+    special-rules:
+      whitelist-ips:
+        - ""
+
+      blacklist-rules:
+        - pattern: "suspicious-pattern"
+          capacity: 10
+          refill-rate: 1
+          burst-capacity: 2
+      
+      time-windows:
+        - name: "peak-hours"
+          hours: ["09:00-12:00", "14:00-18:00"]
+          multiplier: 0.8
+        
+        - name: "off-peak"
+          hours: ["00:00-06:00", "22:00-23:59"]
+          multiplier: 1.5

@@ -1,0 +1,18 @@
+spring:
+  data:
+    redis:
+      host: redis-host
+      port: 6379
+
+gateway:
+  ratelimit:
+    default-capacity: 1000
+    default-refill-rate: 100
+    fail-open: true
+  discovery:
+    type: memory
+
+logging:
+  level:
+    com.mo.gateway: DEBUG
+    root: INFO

@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: gateway-system
+data:
+  application-k8s.yaml: |
+    spring:
+      data:
+        redis:
+          host: redis-host
+          port: 6379
+    gateway:
+      discovery:
+        type: kubernetes
+        kubernetes:
+          namespace: services
+          label-selector: "gateway.enabled=true"
+          service-port: 8080
+          health-check-path: "/actuator/health"
+      ratelimit:
+        enabled: true
+        default-capacity: 1000
+        default-refill-rate: 100
+        endpoints:
+          "/api/ai-agent-storage":
+            capacity: 500
+            refill-rate: 50
+            burst-capacity: 100
+        services:
+          ai-agent-storage-service:
+            capacity: 800
+            refill-rate: 80
+            burst-capacity: 160
+        user-tiers:
+          free:
+            capacity: 100
+            refill-rate: 10
+            burst-capacity: 20
+          premium:
+            capacity: 1000
+            refill-rate: 100
+            burst-capacity: 200
+          enterprise:
+            capacity: 5000
+            refill-rate: 500
+            burst-capacity: 1000
+      loadbalancer:
+        default-strategy: roundRobin
+        service-strategies:
+          ai-agent-storage-service: weightedRoundRobin
+          product-service: leastConnections
