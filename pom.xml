@@ -22,6 +22,7 @@
         <spring-cloud.version>2023.0.3</spring-cloud.version>
         <testcontainers.version>1.19.7</testcontainers.version>
         <lombok.version>1.18.30</lombok.version>
+        <jjwt.version>0.12.3</jjwt.version>
     </properties>
 
     <dependencies>
@@ -78,6 +79,25 @@
             <groupId>io.fabric8</groupId>
             <artifactId>kubernetes-client</artifactId>
             <version>6.9.2</version>
+        </dependency>
+
+        <!-- JWT Support for Authentication -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Utilities -->

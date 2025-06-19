@@ -85,6 +85,22 @@ gateway:
       service-port: 8080
       health-check-path: /actuator/health
 
+  # Authentication Configuration
+  auth:
+    enabled: ${GATEWAY_AUTH_ENABLED:true}
+    plugin-directory: ${GATEWAY_AUTH_PLUGIN_DIR:plugins}
+    enabled-providers:
+      - jwt
+      - apikey
+    provider-configs:
+      jwt:
+        secret: ${JWT_SECRET:jwt_secret}
+        issuer: ${JWT_ISSUER:mo-gateway}
+        expiration-minutes: ${JWT_EXPIRATION_MINUTES:60}
+      apikey:
+        cache-enabled: ${APIKEY_CACHE_ENABLED:true}
+        cache-expiration-minutes: ${APIKEY_CACHE_EXPIRATION_MINUTES:30}
+
 # Management and Monitoring
 management:
   endpoints:
