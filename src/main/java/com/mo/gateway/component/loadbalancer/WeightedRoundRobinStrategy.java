@@ -34,7 +34,7 @@ public class WeightedRoundRobinStrategy implements LoadBalancingStrategy {
             return healthyInstances.get(index);
         }
         var counter = counters.computeIfAbsent(request.serviceId(), k -> new AtomicInteger(0));
-        var weightedIndex = counter.getAndIncrement() % totalWeight;
+        var weightedIndex = Math.abs(counter.getAndIncrement()) % totalWeight;
         var currentWeight = 0;
         for (var instance : healthyInstances) {
             currentWeight += instance.weight();
