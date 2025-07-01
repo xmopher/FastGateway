@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -62,7 +63,92 @@ public class AuthPluginManager {
      * Scan and load plugins
      */
     public void scanAndLoadPlugins() {
-        //TODO
+        log.debug("Scanning plugin directory: {}", pluginDirectory);
+        File dir = new File(pluginDirectory);
+        if (!dir.exists()) {
+            return;
+        }
+        File[] jarFiles = dir.listFiles((d, name) -> name.endsWith(".jar"));
+        if (jarFiles == null) {
+            return;
+        }
+        Set<String> currentJars = new HashSet<>();
+        for (File jarFile : jarFiles) {
+            String jarName = jarFile.getName();
+            currentJars.add(jarName);
+            long lastModified = jarFile.lastModified();
+            PluginContainer existing = loadedPlugins.get(jarName);
+            if (existing == null || existing.lastModified != lastModified) {
+                try {
+                    if (existing != null) {
+                        unloadPlugin(jarName);
+                    }
+                    loadPlugin(jarFile);
+                } catch (Exception e) {
+                    log.error("Failed to load plugin: {}", jarName, e);
+                }
+            }
+        }
+        Set<String> toRemove = new HashSet<>(loadedPlugins.keySet());
+        toRemove.removeAll(currentJars);
+        toRemove.forEach(this::unloadPlugin);
+    }
+
+    /**
+     * Load a single plugin
+     */
+    public void loadPlugin(File jarFile) {
+        String jarName = jarFile.getName();
+        log.info("Loading plugin: {}", jarName);
+        try {
+            URL[] urls = {jarFile.toURI().toURL()};
+            URLClassLoader classLoader = new URLClassLoader(urls, getClass().getClassLoader());
+            ServiceLoader<AuthenticationProvider> serviceLoader =
+                    ServiceLoader.load(AuthenticationProvider.class, classLoader);
+            List<AuthenticationProvider> providers = new ArrayList<>();
+            for (AuthenticationProvider provider : serviceLoader) {
+                providers.add(provider);
+                log.info("Found authentication provider: {} v{}",
+                        provider.getProviderName(), provider.getVersion());
+            }
+            if (!providers.isEmpty()) {
+                PluginContainer container = new PluginContainer(
+                        jarName,
+                        jarFile.lastModified(),
+                        classLoader,
+                        providers
+                );
+                loadedPlugins.put(jarName, container);
+                for (AuthenticationProvider provider : providers) {
+                    try {
+                        provider.initialize(loadPluginConfig(provider.getProviderName()));
+                        log.info("Initialized authentication provider: {}", provider.getProviderName());
+                    } catch (Exception e) {
+                        log.error("Failed to initialize provider: {}", provider.getProviderName(), e);
+                    }
+                }
+                log.info("Successfully loaded plugin: {} with {} providers", jarName, providers.size());
+            } else {
+                log.warn("No authentication providers found in plugin: {}", jarName);
+                try {
+                    classLoader.close();
+                } catch (Exception e) {
+                    log.warn("Failed to close class loader for: {}", jarName, e);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to load plugin: {}", jarName, e);
+        }
+    }
+
+    /**
+     * Load plugin configuration
+     */
+    private Properties loadPluginConfig(String providerName) {
+        Properties props = new Properties();
+        // Load from application.yaml or environment variables
+        // props.setProperty("key", "value");
+        return props;
     }
 
     /**
