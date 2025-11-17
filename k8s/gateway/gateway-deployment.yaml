@@ -4,7 +4,7 @@ metadata:
   name: api-gateway
   namespace: gateway-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: api-gateway
@@ -20,15 +20,13 @@ spec:
           ports:
             - containerPort: 8080
               name: http
-            - containerPort: 5005
-              name: debug
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: "k8s"
             - name: JAVA_OPTS
-              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseStringDeduplication --enable-preview"
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0 -XX:+UseG1GC -XX:+UseStringDeduplication -Xms256m -Xmx384m"
             - name: REDIS_HOST
-              value: "redis-host"
+              value: "redis-service"  # 如果 Redis 部署在同一集群，使用 Service 名称
             - name: REDIS_PORT
               value: "6379"
             - name: GATEWAY_RATELIMIT_ENABLED
@@ -54,30 +52,27 @@ spec:
               mountPath: /config/ratelimit
           resources:
             requests:
-              memory: "700Mi"
-              cpu: "300m"
+              memory: "256Mi"
+              cpu: "200m"
             limits:
-              memory: "1.5Gi"
-              cpu: "1000m"
+              memory: "512Mi"
+              cpu: "500m"
           livenessProbe:
             httpGet:
-              path: /actuator/health/liveness
+              path: /actuator/health
               port: 8080
-            initialDelaySeconds: 90
+            initialDelaySeconds: 60
             periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /actuator/health/readiness
-              port: 8080
-            initialDelaySeconds: 45
-            periodSeconds: 10
-          startupProbe:
-            httpGet:
-              path: /actuator/health/liveness
+              path: /actuator/health
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
-            failureThreshold: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
         - name: config-volume
           configMap:

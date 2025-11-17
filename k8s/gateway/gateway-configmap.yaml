@@ -8,7 +8,7 @@ data:
     spring:
       data:
         redis:
-          host: redis-host
+          host: redis-service  # 如果 Redis 部署在 K3s 集群内，使用 Service 名称；如果在外，使用实际 IP 或域名
           port: 6379
     gateway:
       discovery:

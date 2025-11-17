@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: gateway-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 200mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - gateway-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.2'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+
+  api-gateway:
+    image: your-registry/gateway:1.0.0  # 请修改为您的镜像地址
+    container_name: gateway-service
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GATEWAY_RATELIMIT_ENABLED=true
+      - GATEWAY_RATELIMIT_CAPACITY=1000
+      - GATEWAY_RATELIMIT_REFILL_RATE=100
+      - GATEWAY_RATELIMIT_FAIL_OPEN=true
+      - GATEWAY_DISCOVERY_TYPE=memory
+      - GATEWAY_LOG_LEVEL=INFO
+      - GATEWAY_HEALTH_CHECK_INTERVAL=30000
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0 -XX:+UseG1GC -XX:+UseStringDeduplication -Xms256m -Xmx384m
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gateway-network
+    volumes:
+      - gateway-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.2'
+
+volumes:
+  redis-data:
+    driver: local
+  gateway-logs:
+    driver: local
+
+networks:
+  gateway-network:
+    driver: bridge
+

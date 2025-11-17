@@ -24,19 +24,24 @@ metadata:
   labels:
     app: api-gateway
   annotations:
-    kubernetes.io/ingress.class: "alb"
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
-    alb.ingress.kubernetes.io/ssl-redirect: '443'
-    alb.ingress.kubernetes.io/certificate-arn: "certificate"
-    alb.ingress.kubernetes.io/health-check-path: "/actuator/health"
-    alb.ingress.kubernetes.io/health-check-interval-seconds: "30"
-    alb.ingress.kubernetes.io/health-check-timeout-seconds: "10"
-    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
-    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    # K3s 默认使用 Traefik 作为 Ingress Controller
+    # Traefik 会自动处理，如果需要 HTTPS 可以配置证书
+    # 注意：K3s 的 Traefik 默认端口是 80 (HTTP) 和 443 (HTTPS)
 spec:
+  # K3s Traefik 会自动处理，也可以明确指定 ingressClassName
+  ingressClassName: traefik
   rules:
+    - host: gateway.example.com  # 修改为您的域名，或使用 IP 访问则删除此 host
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway-service
+                port:
+                  number: 80
+    # 如果没有域名，可以通过 IP 访问（删除 host 字段）
     - http:
         paths:
           - path: /
