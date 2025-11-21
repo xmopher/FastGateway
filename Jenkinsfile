@@ -180,7 +180,12 @@ pipeline {
                     echo "🔨 开始 Maven 构建..."
                     echo "📦 项目名称: ${PROJECT_NAME}"
                     echo "🏷️  版本: ${VERSION}"
-                    sh 'mvn clean package -DskipTests'
+                    if (isUnix()) {
+                        sh 'mvn clean package -DskipTests'
+                    } else {
+                        // Windows: 使用 Git Bash 执行
+                        bat "\"${env.SH_CMD}\" -c \"mvn clean package -DskipTests\""
+                    }
                 }
             }
             post {
