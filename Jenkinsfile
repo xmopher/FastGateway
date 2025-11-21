@@ -106,6 +106,9 @@ pipeline {
         
         // Maven 配置
         MAVEN_OPTS = '-Xmx1024m -XX:MaxPermSize=256m'
+        
+        // Windows 环境：添加 Git Bash 到 PATH（Jenkins 需要 sh.exe）
+        PATH = isUnix() ? "${env.PATH}" : "C:\\Program Files\\Git\\bin;C:\\Program Files\\Git\\usr\\bin;${env.PATH}"
     }
 
     options {
@@ -143,9 +146,7 @@ pipeline {
                     echo "🔨 开始 Maven 构建..."
                     echo "📦 项目名称: ${PROJECT_NAME}"
                     echo "🏷️  版本: ${VERSION}"
-                    sh '''
-                        mvn clean package -DskipTests
-                    '''
+                    sh 'mvn clean package -DskipTests'
                 }
             }
             post {
