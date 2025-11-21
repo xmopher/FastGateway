@@ -388,22 +388,22 @@ K8S_DEPLOY_EOF
                             // 将脚本写入临时文件，然后通过 Git Bash 执行
                             def deployScript = """
 # 准备临时部署文件（Windows 使用临时目录）
-DEPLOY_DIR=/tmp/k8s-deploy-$$
-mkdir -p "$DEPLOY_DIR"
+DEPLOY_DIR=/tmp/k8s-deploy-\$\$
+mkdir -p "\\\$DEPLOY_DIR"
 
 # 复制 K8s 配置文件
-cp -r k8s/* "$DEPLOY_DIR/"
+cp -r k8s/* "\\\$DEPLOY_DIR/"
 
 # 更新 deployment.yaml 中的镜像版本
-sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" "$DEPLOY_DIR/gateway/gateway-deployment.yaml"
+sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" "\\\$DEPLOY_DIR/gateway/gateway-deployment.yaml"
 
 # 更新 Redis 主机地址（如果配置了外部 Redis）
 if [ -n "${REDIS_HOST}" ] && [ "${REDIS_HOST}" != "redis-service" ]; then
-    sed -i "s|value: \\\\"redis-service\\\\"|value: \\\\"${REDIS_HOST}\\\\"|g" "$DEPLOY_DIR/gateway/gateway-deployment.yaml"
+    sed -i "s|value: \\\\"redis-service\\\\"|value: \\\\"${REDIS_HOST}\\\\"|g" "\\\$DEPLOY_DIR/gateway/gateway-deployment.yaml"
 fi
 
 # 将配置文件复制到 K3s 服务器
-scp -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} -r "$DEPLOY_DIR"/* \\
+scp -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} -r "\\\$DEPLOY_DIR"/* \\
     ${sshUser}@${K3S_HOST}:/tmp/k8s-deploy/
 
 # 在 K3s 服务器上执行部署
@@ -430,48 +430,48 @@ echo "📦 部署 Deployment..."
 kubectl apply -f /tmp/k8s-deploy/gateway/gateway-deployment.yaml
 
 echo "⏳ 等待 Pod 启动..."
-kubectl wait --for=condition=ready pod -l app=api-gateway -n \\${K3S_NAMESPACE} --timeout=300s || true
+kubectl wait --for=condition=ready pod -l app=api-gateway -n \\\$K3S_NAMESPACE --timeout=300s || true
 
 echo "📊 查看部署状态..."
-kubectl get pods -n \\${K3S_NAMESPACE} -l app=api-gateway
-kubectl get svc -n \\${K3S_NAMESPACE}
+kubectl get pods -n \\\$K3S_NAMESPACE -l app=api-gateway
+kubectl get svc -n \\\$K3S_NAMESPACE
 
 echo "🏥 检查 Pod 健康状态..."
 sleep 10
 
-POD_NAME=\\$(kubectl get pods -n \\${K3S_NAMESPACE} -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+POD_NAME=\\\$(kubectl get pods -n \\\$K3S_NAMESPACE -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
-if [ -z "\\$POD_NAME" ]; then
+if [ -z "\\\$POD_NAME" ]; then
     echo "❌ 未找到 Pod！"
-    kubectl get pods -n \\${K3S_NAMESPACE}
+    kubectl get pods -n \\\$K3S_NAMESPACE
     exit 1
 fi
 
 # 检查 Pod 状态
-POD_STATUS=\\$(kubectl get pod \\$POD_NAME -n \\${K3S_NAMESPACE} -o jsonpath='{.status.phase}')
+POD_STATUS=\\\$(kubectl get pod \\\$POD_NAME -n \\\$K3S_NAMESPACE -o jsonpath='{.status.phase}')
 
-if [ "\\$POD_STATUS" != "Running" ]; then
-    echo "❌ Pod 状态异常: \\$POD_STATUS"
-    kubectl describe pod \\$POD_NAME -n \\${K3S_NAMESPACE}
-    kubectl logs \\$POD_NAME -n \\${K3S_NAMESPACE} --tail=50
+if [ "\\\$POD_STATUS" != "Running" ]; then
+    echo "❌ Pod 状态异常: \\\$POD_STATUS"
+    kubectl describe pod \\\$POD_NAME -n \\\$K3S_NAMESPACE
+    kubectl logs \\\$POD_NAME -n \\\$K3S_NAMESPACE --tail=50
     exit 1
 fi
 
-echo "✅ Pod 运行正常: \\$POD_NAME"
+echo "✅ Pod 运行正常: \\\$POD_NAME"
 
 # 健康检查
 echo "🏥 执行健康检查..."
 for i in {1..30}; do
-    if kubectl exec -n \\${K3S_NAMESPACE} \\$POD_NAME -- curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
+    if kubectl exec -n \\\$K3S_NAMESPACE \\\$POD_NAME -- curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
         echo "✅ 服务健康检查通过！"
         exit 0
     fi
-    echo "等待中... (\\$i/30)"
+    echo "等待中... (\\\$i/30)"
     sleep 2
 done
 
 echo "❌ 服务健康检查失败！"
-kubectl logs \\$POD_NAME -n \\${K3S_NAMESPACE} --tail=50
+kubectl logs \\\$POD_NAME -n \\\$K3S_NAMESPACE --tail=50
 exit 1
 K8S_DEPLOY_EOF
                             """.trim()
@@ -500,37 +500,77 @@ K8S_DEPLOY_EOF
                         usernameVariable: 'SSH_USER_FROM_CREDENTIAL'
                     )]) {
                         def sshUser = params.K3S_USER ?: env.SSH_USER_FROM_CREDENTIAL
-                        sh """
-                            # 通过 SSH 在 K3s 服务器上执行健康检查
-                            ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} ${sshUser}@${K3S_HOST} bash << HEALTH_CHECK_EOF
-                            export KUBECONFIG=${K3S_KUBECONFIG_PATH}
-                            export K3S_NAMESPACE=${K3S_NAMESPACE}
-                            
-                            # 获取 Service 的 NodePort 或通过 Ingress
-                            SERVICE_TYPE=\$(kubectl get svc api-gateway-service -n \${K3S_NAMESPACE} -o jsonpath='{.spec.type}' 2>/dev/null)
-                            
-                            if [ "\$SERVICE_TYPE" = "NodePort" ]; then
-                                NODEPORT=\$(kubectl get svc api-gateway-service -n \${K3S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
-                                HEALTH_URL="http://localhost:\$NODEPORT/actuator/health"
-                            else
-                                # 通过 Port Forward 或 Ingress
-                                HEALTH_URL="http://localhost:8080/actuator/health"
-                            fi
-                            
-                            # 尝试通过 Pod 内部检查
-                            POD_NAME=\$(kubectl get pods -n \${K3S_NAMESPACE} -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-                            
-                            if [ -n "\$POD_NAME" ]; then
-                                if kubectl exec -n \${K3S_NAMESPACE} \$POD_NAME -- curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
-                                    echo "✅ 服务健康检查通过！"
+                        script {
+                            if (isUnix()) {
+                                sh """
+                                    # 通过 SSH 在 K3s 服务器上执行健康检查
+                                    ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} ${sshUser}@${K3S_HOST} bash << HEALTH_CHECK_EOF
+                                    export KUBECONFIG=${K3S_KUBECONFIG_PATH}
+                                    export K3S_NAMESPACE=${K3S_NAMESPACE}
+                                    
+                                    # 获取 Service 的 NodePort 或通过 Ingress
+                                    SERVICE_TYPE=\$(kubectl get svc api-gateway-service -n \${K3S_NAMESPACE} -o jsonpath='{.spec.type}' 2>/dev/null)
+                                    
+                                    if [ "\$SERVICE_TYPE" = "NodePort" ]; then
+                                        NODEPORT=\$(kubectl get svc api-gateway-service -n \${K3S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
+                                        HEALTH_URL="http://localhost:\$NODEPORT/actuator/health"
+                                    else
+                                        # 通过 Port Forward 或 Ingress
+                                        HEALTH_URL="http://localhost:8080/actuator/health"
+                                    fi
+                                    
+                                    # 尝试通过 Pod 内部检查
+                                    POD_NAME=\$(kubectl get pods -n \${K3S_NAMESPACE} -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+                                    
+                                    if [ -n "\$POD_NAME" ]; then
+                                        if kubectl exec -n \${K3S_NAMESPACE} \$POD_NAME -- curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
+                                            echo "✅ 服务健康检查通过！"
+                                            exit 0
+                                        fi
+                                    fi
+                                    
+                                    echo "⚠️  无法通过 Pod 检查，请手动验证服务状态"
                                     exit 0
-                                fi
-                            fi
-                            
-                            echo "⚠️  无法通过 Pod 检查，请手动验证服务状态"
-                            exit 0
 HEALTH_CHECK_EOF
-                        """
+                                """
+                            } else {
+                                // Windows: 通过 Git Bash 执行
+                                def healthCheckScript = """
+# 通过 SSH 在 K3s 服务器上执行健康检查
+ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} ${sshUser}@${K3S_HOST} bash << 'HEALTH_CHECK_EOF'
+export KUBECONFIG=${K3S_KUBECONFIG_PATH}
+export K3S_NAMESPACE=${K3S_NAMESPACE}
+
+# 获取 Service 的 NodePort 或通过 Ingress
+SERVICE_TYPE=\\$(kubectl get svc api-gateway-service -n \\\$K3S_NAMESPACE -o jsonpath='{.spec.type}' 2>/dev/null)
+
+if [ "\\\$SERVICE_TYPE" = "NodePort" ]; then
+    NODEPORT=\\$(kubectl get svc api-gateway-service -n \\\$K3S_NAMESPACE -o jsonpath='{.spec.ports[0].nodePort}')
+    HEALTH_URL="http://localhost:\\\$NODEPORT/actuator/health"
+else
+    # 通过 Port Forward 或 Ingress
+    HEALTH_URL="http://localhost:8080/actuator/health"
+fi
+
+# 尝试通过 Pod 内部检查
+POD_NAME=\\$(kubectl get pods -n \\\$K3S_NAMESPACE -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+
+if [ -n "\\\$POD_NAME" ]; then
+    if kubectl exec -n \\\$K3S_NAMESPACE \\\$POD_NAME -- curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
+        echo "✅ 服务健康检查通过！"
+        exit 0
+    fi
+fi
+
+echo "⚠️  无法通过 Pod 检查，请手动验证服务状态"
+exit 0
+HEALTH_CHECK_EOF
+                                """.trim()
+                                
+                                writeFile file: 'healthcheck.sh', text: healthCheckScript, encoding: 'UTF-8'
+                                bat "\"${env.SH_CMD}\" healthcheck.sh"
+                            }
+                        }
                     }
                 }
             }
