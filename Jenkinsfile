@@ -514,7 +514,15 @@ HEALTH_CHECK_EOF
                                 def kubeConfigPath = "${K3S_KUBECONFIG_PATH}"
                                 def k3sNamespace = "${K3S_NAMESPACE}"
                                 def healthCheckScript = """
-ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} ${sshUser}@${K3S_HOST} bash << HEALTH_CHECK_EOF
+SSH_KEY="${SSH_KEY_FILE}"
+if echo "\\$SSH_KEY" | grep -q '^[A-Za-z]:'; then
+    if command -v cygpath > /dev/null 2>&1; then
+        SSH_KEY=\\$(cygpath -u "\\$SSH_KEY")
+    else
+        SSH_KEY=\\$(echo "\\$SSH_KEY" | sed 's|\\\\\\\\|/|g' | sed 's|^[Cc]:|/c|' | sed 's|^[Dd]:|/d|' | sed 's|^[Ee]:|/e|' | sed 's|^[Ff]:|/f|')
+    fi
+fi
+ssh -o StrictHostKeyChecking=no -i "\\${SSH_KEY}" ${sshUser}@${K3S_HOST} bash << HEALTH_CHECK_EOF
 export KUBECONFIG=${kubeConfigPath}
 export K3S_NAMESPACE=${k3sNamespace}
 SERVICE_TYPE=\\\$(kubectl get svc api-gateway-service -n \\\$K3S_NAMESPACE -o jsonpath='{.spec.type}' 2>/dev/null)
