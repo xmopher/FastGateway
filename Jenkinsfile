@@ -150,6 +150,26 @@ pipeline {
                 }
             }
         }
+        
+        stage('配置 Shell') {
+            steps {
+                script {
+                    if (!isUnix()) {
+                        // Windows 环境：设置 sh.exe 的完整路径
+                        def shPath = 'C:\\Program Files\\Git\\bin\\sh.exe'
+                        if (fileExists(shPath)) {
+                            env.SH_CMD = shPath
+                            env.PATH = "C:\\Program Files\\Git\\bin;C:\\Program Files\\Git\\usr\\bin;${env.PATH}"
+                            echo "✅ 已配置 Git Bash: ${shPath}"
+                        } else {
+                            error("❌ 找不到 Git Bash，请安装 Git for Windows")
+                        }
+                    } else {
+                        env.SH_CMD = 'sh'
+                    }
+                }
+            }
+        }
 
         stage('Maven 构建') {
             when {
@@ -178,10 +198,16 @@ pipeline {
                 script {
                     echo "🐳 构建 Docker 镜像: ${DOCKER_IMAGE}:${DOCKER_TAG}"
                     echo "📦 镜像仓库: ${DOCKER_REGISTRY}"
-                    sh '''
-                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
-                    '''
+                    script {
+                        if (isUnix()) {
+                            sh '''
+                                docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                                docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                            '''
+                        } else {
+                            bat "\"${env.SH_CMD}\" -c \"docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . && docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest\""
+                        }
+                    }
                 }
             }
         }
@@ -202,19 +228,29 @@ pipeline {
                                 usernameVariable: 'DOCKER_REGISTRY_USER',
                                 passwordVariable: 'DOCKER_REGISTRY_PASSWORD'
                             )]) {
-                                sh '''
-                                    echo "${DOCKER_REGISTRY_PASSWORD}" | docker login ${DOCKER_REGISTRY} -u ${DOCKER_REGISTRY_USER} --password-stdin
-                                '''
+                                script {
+                                    if (isUnix()) {
+                                        sh 'echo "${DOCKER_REGISTRY_PASSWORD}" | docker login ${DOCKER_REGISTRY} -u ${DOCKER_REGISTRY_USER} --password-stdin'
+                                    } else {
+                                        bat "\"${env.SH_CMD}\" -c \"echo ${DOCKER_REGISTRY_PASSWORD} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_REGISTRY_USER} --password-stdin\""
+                                    }
+                                }
                             }
                         }
                     }
                     
                     // 推送镜像
-                    sh '''
-                        echo "推送镜像: ${DOCKER_IMAGE}:${DOCKER_TAG}"
-                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        docker push ${DOCKER_IMAGE}:latest
-                    '''
+                    script {
+                        if (isUnix()) {
+                            sh '''
+                                echo "推送镜像: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                                docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                                docker push ${DOCKER_IMAGE}:latest
+                            '''
+                        } else {
+                            bat "\"${env.SH_CMD}\" -c \"echo 推送镜像: ${DOCKER_IMAGE}:${DOCKER_TAG} && docker push ${DOCKER_IMAGE}:${DOCKER_TAG} && docker push ${DOCKER_IMAGE}:latest\""
+                        }
+                    }
                 }
             }
         }
@@ -252,7 +288,9 @@ pipeline {
                         def sshUser = params.K3S_USER ?: env.SSH_USER_FROM_CREDENTIAL
                         
                         // 通过 SSH 在 K3s 服务器上执行 kubectl 部署
-                        sh """
+                        // 注意：在 Windows 上需要配置 Jenkins 系统 PATH 包含 Git/bin，或使用 bat 调用完整路径
+                        if (isUnix()) {
+                            sh """
                             # 准备临时部署文件
                             mkdir -p /tmp/k8s-deploy
                             
@@ -339,7 +377,11 @@ pipeline {
                             kubectl logs \$POD_NAME -n \${K3S_NAMESPACE} --tail=50
                             exit 1
 K8S_DEPLOY_EOF
-                    """
+                            """
+                        } else {
+                            // Windows: 通过 bat 调用 Git Bash（需要先配置 Jenkins 系统 PATH 包含 Git/bin）
+                            error("❌ Windows 环境需要配置 Jenkins 系统 PATH 包含 Git\\bin 目录。请在 Jenkins 系统配置中添加：C:\\Program Files\\Git\\bin")
+                        }
                     }
                 }
             }
