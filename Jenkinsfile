@@ -269,6 +269,7 @@ pipeline {
                             sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" /tmp/k8s-deploy/gateway/gateway-deployment.yaml
                             if [ -n "${REDIS_HOST}" ] && [ "${REDIS_HOST}" != "redis-service" ]; then
                                 sed -i "s|value: \"redis-service\"|value: \"${REDIS_HOST}\"|g" /tmp/k8s-deploy/gateway/gateway-deployment.yaml
+                                sed -i "s|host: redis-service|host: ${REDIS_HOST}|g" /tmp/k8s-deploy/gateway/gateway-configmap.yaml
                             fi
                             scp -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} -r /tmp/k8s-deploy/* \
                                 ${sshUser}@${K3S_HOST}:/tmp/k8s-deploy/
@@ -324,12 +325,18 @@ pipeline {
                             fi
                             
                             echo "Checking Pod details..."
-                            kubectl describe pod \$POD_NAME -n \${K3S_NAMESPACE} | tail -30
-                            
                             POD_STATUS=\$(kubectl get pod \$POD_NAME -n \${K3S_NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null)
-                            if [ "\$POD_STATUS" != "Running" ]; then
-                                echo "Pod status abnormal: \$POD_STATUS"
-                                kubectl logs \$POD_NAME -n \${K3S_NAMESPACE} --tail=50
+                            CONTAINER_STATUS=\$(kubectl get pod \$POD_NAME -n \${K3S_NAMESPACE} -o jsonpath='{.status.containerStatuses[0].state.waiting.reason}' 2>/dev/null || kubectl get pod \$POD_NAME -n \${K3S_NAMESPACE} -o jsonpath='{.status.containerStatuses[0].state.running.startedAt}' 2>/dev/null || echo "unknown")
+                            
+                            kubectl describe pod \$POD_NAME -n \${K3S_NAMESPACE} | tail -40
+                            
+                            echo "Pod logs:"
+                            kubectl logs \$POD_NAME -n \${K3S_NAMESPACE} --tail=100 || echo "Cannot get logs"
+                            
+                            if [ "\$POD_STATUS" != "Running" ] || [ "\$CONTAINER_STATUS" = "CrashLoopBackOff" ] || [ "\$CONTAINER_STATUS" = "ImagePullBackOff" ]; then
+                                echo "Pod status abnormal: \$POD_STATUS, Container status: \$CONTAINER_STATUS"
+                                echo "Previous container logs:"
+                                kubectl logs \$POD_NAME -n \${K3S_NAMESPACE} --previous --tail=50 2>/dev/null || echo "No previous logs"
                                 exit 1
                             fi
                             
@@ -358,6 +365,7 @@ sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" "\$DEPLOY_DIR/gateway
 if [ -n "${REDIS_HOST}" ] && [ "${REDIS_HOST}" != "redis-service" ]; then
     perl -i -pe "s|value: \\\"redis-service\\\"|value: \\\"${REDIS_HOST}\\\"|g" "\$DEPLOY_DIR/gateway/gateway-deployment.yaml" 2>/dev/null || \\
     sed -i "s|value: \\\\"redis-service\\\\"|value: \\\\"${REDIS_HOST}\\\\"|g" "\$DEPLOY_DIR/gateway/gateway-deployment.yaml"
+    sed -i "s|host: redis-service|host: ${REDIS_HOST}|g" "\$DEPLOY_DIR/gateway/gateway-configmap.yaml"
 fi
 if echo "${SSH_KEY_FILE}" | grep -q '^[A-Za-z]:'; then
     if command -v cygpath > /dev/null 2>&1; then
@@ -422,12 +430,18 @@ if [ -z "\\\$POD_NAME" ]; then
 fi
 
 echo "Checking Pod details..."
-kubectl describe pod \\\$POD_NAME -n \\\$K3S_NAMESPACE | tail -30
-
 POD_STATUS=\\\$(kubectl get pod \\\$POD_NAME -n \\\$K3S_NAMESPACE -o jsonpath='{.status.phase}' 2>/dev/null)
-if [ "\\\$POD_STATUS" != "Running" ]; then
-    echo "Pod status abnormal: \\\$POD_STATUS"
-    kubectl logs \\\$POD_NAME -n \\\$K3S_NAMESPACE --tail=50
+CONTAINER_STATUS=\\\$(kubectl get pod \\\$POD_NAME -n \\\$K3S_NAMESPACE -o jsonpath='{.status.containerStatuses[0].state.waiting.reason}' 2>/dev/null || kubectl get pod \\\$POD_NAME -n \\\$K3S_NAMESPACE -o jsonpath='{.status.containerStatuses[0].state.running.startedAt}' 2>/dev/null || echo "unknown")
+
+kubectl describe pod \\\$POD_NAME -n \\\$K3S_NAMESPACE | tail -40
+
+echo "Pod logs:"
+kubectl logs \\\$POD_NAME -n \\\$K3S_NAMESPACE --tail=100 || echo "Cannot get logs"
+
+if [ "\\\$POD_STATUS" != "Running" ] || [ "\\\$CONTAINER_STATUS" = "CrashLoopBackOff" ] || [ "\\\$CONTAINER_STATUS" = "ImagePullBackOff" ]; then
+    echo "Pod status abnormal: \\\$POD_STATUS, Container status: \\\$CONTAINER_STATUS"
+    echo "Previous container logs:"
+    kubectl logs \\\$POD_NAME -n \\\$K3S_NAMESPACE --previous --tail=50 2>/dev/null || echo "No previous logs"
     exit 1
 fi
 
