@@ -535,17 +535,21 @@ HEALTH_CHECK_EOF
                                 """
                             } else {
                                 // Windows: 通过 Git Bash 执行
+                                // Windows: 需要在 Groovy 层面展开变量，然后传递给远程服务器
+                                // 使用单引号 heredoc 防止本地 shell 展开，但 Groovy 的 ${} 仍然会展开
+                                def kubeConfigPath = "${K3S_KUBECONFIG_PATH}"
+                                def k3sNamespace = "${K3S_NAMESPACE}"
                                 def healthCheckScript = """
 # 通过 SSH 在 K3s 服务器上执行健康检查
-ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} ${sshUser}@${K3S_HOST} bash << 'HEALTH_CHECK_EOF'
-export KUBECONFIG=${K3S_KUBECONFIG_PATH}
-export K3S_NAMESPACE=${K3S_NAMESPACE}
+ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} ${sshUser}@${K3S_HOST} bash << HEALTH_CHECK_EOF
+export KUBECONFIG=${kubeConfigPath}
+export K3S_NAMESPACE=${k3sNamespace}
 
 # 获取 Service 的 NodePort 或通过 Ingress
-SERVICE_TYPE=\\$(kubectl get svc api-gateway-service -n \\\$K3S_NAMESPACE -o jsonpath='{.spec.type}' 2>/dev/null)
+SERVICE_TYPE=\\\$(kubectl get svc api-gateway-service -n \\\$K3S_NAMESPACE -o jsonpath='{.spec.type}' 2>/dev/null)
 
 if [ "\\\$SERVICE_TYPE" = "NodePort" ]; then
-    NODEPORT=\\$(kubectl get svc api-gateway-service -n \\\$K3S_NAMESPACE -o jsonpath='{.spec.ports[0].nodePort}')
+    NODEPORT=\\\$(kubectl get svc api-gateway-service -n \\\$K3S_NAMESPACE -o jsonpath='{.spec.ports[0].nodePort}')
     HEALTH_URL="http://localhost:\\\$NODEPORT/actuator/health"
 else
     # 通过 Port Forward 或 Ingress
@@ -553,7 +557,7 @@ else
 fi
 
 # 尝试通过 Pod 内部检查
-POD_NAME=\\$(kubectl get pods -n \\\$K3S_NAMESPACE -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+POD_NAME=\\\$(kubectl get pods -n \\\$K3S_NAMESPACE -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
 if [ -n "\\\$POD_NAME" ]; then
     if kubectl exec -n \\\$K3S_NAMESPACE \\\$POD_NAME -- curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
