@@ -338,24 +338,25 @@ K8S_DEPLOY_EOF
                         } else {
                             def deployScript = """
 DEPLOY_DIR=/tmp/k8s-deploy-\$\$
-mkdir -p "\\\$DEPLOY_DIR"
-cp -r k8s/* "\\\$DEPLOY_DIR/"
-sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" "\\\$DEPLOY_DIR/gateway/gateway-deployment.yaml"
+mkdir -p "\$DEPLOY_DIR"
+cp -r k8s/* "\$DEPLOY_DIR/"
+sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" "\$DEPLOY_DIR/gateway/gateway-deployment.yaml"
 if [ -n "${REDIS_HOST}" ] && [ "${REDIS_HOST}" != "redis-service" ]; then
-    perl -i -pe "s|value: \\\"redis-service\\\"|value: \\\"${REDIS_HOST}\\\"|g" "\\\$DEPLOY_DIR/gateway/gateway-deployment.yaml" 2>/dev/null || \\
-    sed -i "s|value: \\\\"redis-service\\\\"|value: \\\\"${REDIS_HOST}\\\\"|g" "\\\$DEPLOY_DIR/gateway/gateway-deployment.yaml"
+    perl -i -pe "s|value: \\\"redis-service\\\"|value: \\\"${REDIS_HOST}\\\"|g" "\$DEPLOY_DIR/gateway/gateway-deployment.yaml" 2>/dev/null || \\
+    sed -i "s|value: \\\\"redis-service\\\\"|value: \\\\"${REDIS_HOST}\\\\"|g" "\$DEPLOY_DIR/gateway/gateway-deployment.yaml"
 fi
-SSH_KEY_PATH="${SSH_KEY_FILE}"
-if echo "\\\$SSH_KEY_PATH" | grep -q '^[A-Za-z]:'; then
+if echo "${SSH_KEY_FILE}" | grep -q '^[A-Za-z]:'; then
     if command -v cygpath > /dev/null 2>&1; then
-        SSH_KEY_PATH=\$(cygpath -u "\\\$SSH_KEY_PATH")
+        SSH_KEY=\$(cygpath -u "${SSH_KEY_FILE}")
     else
-        SSH_KEY_PATH=\$(echo "\\\$SSH_KEY_PATH" | sed 's|\\\\\\\\|/|g' | sed 's|^[Cc]:|/c|' | sed 's|^[Dd]:|/d|' | sed 's|^[Ee]:|/e|' | sed 's|^[Ff]:|/f|')
+        SSH_KEY=\$(echo "${SSH_KEY_FILE}" | sed 's|\\\\\\\\|/|g' | sed 's|^[Cc]:|/c|' | sed 's|^[Dd]:|/d|' | sed 's|^[Ee]:|/e|' | sed 's|^[Ff]:|/f|')
     fi
+else
+    SSH_KEY="${SSH_KEY_FILE}"
 fi
-scp -o StrictHostKeyChecking=no -i "\\\$SSH_KEY_PATH" -r "\\\$DEPLOY_DIR"/* \\
+scp -o StrictHostKeyChecking=no -i \${SSH_KEY} -r \${DEPLOY_DIR}/* \\
     ${sshUser}@${K3S_HOST}:/tmp/k8s-deploy/
-ssh -o StrictHostKeyChecking=no -i "\\\$SSH_KEY_PATH" ${sshUser}@${K3S_HOST} bash << K8S_DEPLOY_EOF
+ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} ${sshUser}@${K3S_HOST} bash << K8S_DEPLOY_EOF
 set -e
 
 export KUBECONFIG=${K3S_KUBECONFIG_PATH}
