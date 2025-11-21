@@ -295,14 +295,26 @@ pipeline {
                             kubectl apply -f /tmp/k8s-deploy/gateway/gateway-deployment.yaml
                             
                             echo "Waiting for Pod to start..."
-                            kubectl wait --for=condition=ready pod -l app=api-gateway -n \${K3S_NAMESPACE} --timeout=300s || true
+                            for i in {1..60}; do
+                                POD_NAME=\$(kubectl get pods -n \${K3S_NAMESPACE} -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+                                if [ -n "\$POD_NAME" ]; then
+                                    READY=\$(kubectl get pod \$POD_NAME -n \${K3S_NAMESPACE} -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null)
+                                    if [ "\$READY" = "true" ]; then
+                                        echo "Pod is ready: \$POD_NAME"
+                                        break
+                                    fi
+                                fi
+                                if [ \$i -eq 60 ]; then
+                                    echo "Timeout waiting for Pod to be ready"
+                                    break
+                                fi
+                                echo "Waiting... (\$i/60)"
+                                sleep 5
+                            done
                             
                             echo "Checking deployment status..."
                             kubectl get pods -n \${K3S_NAMESPACE} -l app=api-gateway
                             kubectl get svc -n \${K3S_NAMESPACE}
-                            
-                            echo "Checking Pod health..."
-                            sleep 10
                             
                             POD_NAME=\$(kubectl get pods -n \${K3S_NAMESPACE} -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
                             if [ -z "\$POD_NAME" ]; then
@@ -310,11 +322,13 @@ pipeline {
                                 kubectl get pods -n \${K3S_NAMESPACE}
                                 exit 1
                             fi
-                            POD_STATUS=\$(kubectl get pod \$POD_NAME -n \${K3S_NAMESPACE} -o jsonpath='{.status.phase}')
                             
+                            echo "Checking Pod details..."
+                            kubectl describe pod \$POD_NAME -n \${K3S_NAMESPACE} | tail -30
+                            
+                            POD_STATUS=\$(kubectl get pod \$POD_NAME -n \${K3S_NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null)
                             if [ "\$POD_STATUS" != "Running" ]; then
                                 echo "Pod status abnormal: \$POD_STATUS"
-                                kubectl describe pod \$POD_NAME -n \${K3S_NAMESPACE}
                                 kubectl logs \$POD_NAME -n \${K3S_NAMESPACE} --tail=50
                                 exit 1
                             fi
@@ -379,14 +393,26 @@ echo "Deploying Deployment..."
 kubectl apply -f /tmp/k8s-deploy/gateway/gateway-deployment.yaml
 
 echo "Waiting for Pod to start..."
-kubectl wait --for=condition=ready pod -l app=api-gateway -n \\\$K3S_NAMESPACE --timeout=300s || true
+for i in {1..60}; do
+    POD_NAME=\\\$(kubectl get pods -n \\\$K3S_NAMESPACE -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -n "\\\$POD_NAME" ]; then
+        READY=\\\$(kubectl get pod \\\$POD_NAME -n \\\$K3S_NAMESPACE -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null)
+        if [ "\\\$READY" = "true" ]; then
+            echo "Pod is ready: \\\$POD_NAME"
+            break
+        fi
+    fi
+    if [ \\\$i -eq 60 ]; then
+        echo "Timeout waiting for Pod to be ready"
+        break
+    fi
+    echo "Waiting... (\\\$i/60)"
+    sleep 5
+done
 
 echo "Checking deployment status..."
 kubectl get pods -n \\\$K3S_NAMESPACE -l app=api-gateway
 kubectl get svc -n \\\$K3S_NAMESPACE
-
-echo "Checking Pod health..."
-sleep 10
 
 POD_NAME=\\\$(kubectl get pods -n \\\$K3S_NAMESPACE -l app=api-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 if [ -z "\\\$POD_NAME" ]; then
@@ -394,11 +420,13 @@ if [ -z "\\\$POD_NAME" ]; then
     kubectl get pods -n \\\$K3S_NAMESPACE
     exit 1
 fi
-POD_STATUS=\\\$(kubectl get pod \\\$POD_NAME -n \\\$K3S_NAMESPACE -o jsonpath='{.status.phase}')
 
+echo "Checking Pod details..."
+kubectl describe pod \\\$POD_NAME -n \\\$K3S_NAMESPACE | tail -30
+
+POD_STATUS=\\\$(kubectl get pod \\\$POD_NAME -n \\\$K3S_NAMESPACE -o jsonpath='{.status.phase}' 2>/dev/null)
 if [ "\\\$POD_STATUS" != "Running" ]; then
     echo "Pod status abnormal: \\\$POD_STATUS"
-    kubectl describe pod \\\$POD_NAME -n \\\$K3S_NAMESPACE
     kubectl logs \\\$POD_NAME -n \\\$K3S_NAMESPACE --tail=50
     exit 1
 fi
