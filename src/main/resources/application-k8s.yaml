@@ -1,8 +1,8 @@
 spring:
   data:
     redis:
-      host: redis-host
-      port: 6379
+      host: ${REDIS_HOST:redis-service}
+      port: ${REDIS_PORT:6379}
 
 gateway:
   ratelimit:
