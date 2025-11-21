@@ -386,6 +386,7 @@ K8S_DEPLOY_EOF
                         } else {
                             // Windows: 使用 Git Bash 执行脚本（通过 bat 调用 sh.exe）
                             // 将脚本写入临时文件，然后通过 Git Bash 执行
+                            // Windows 路径需要转换为 Unix 格式（通过 cygpath 或直接使用）
                             def deployScript = """
 # 准备临时部署文件（Windows 使用临时目录）
 DEPLOY_DIR=/tmp/k8s-deploy-\$\$
@@ -399,15 +400,30 @@ sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" "\\\$DEPLOY_DIR/gatew
 
 # 更新 Redis 主机地址（如果配置了外部 Redis）
 if [ -n "${REDIS_HOST}" ] && [ "${REDIS_HOST}" != "redis-service" ]; then
+    # 使用 Perl 方式替换，避免复杂的引号转义
+    perl -i -pe "s|value: \\\"redis-service\\\"|value: \\\"${REDIS_HOST}\\\"|g" "\\\$DEPLOY_DIR/gateway/gateway-deployment.yaml" 2>/dev/null || \\
     sed -i "s|value: \\\\"redis-service\\\\"|value: \\\\"${REDIS_HOST}\\\\"|g" "\\\$DEPLOY_DIR/gateway/gateway-deployment.yaml"
 fi
 
+# 将 SSH 密钥文件路径转换为 Unix 格式（如果是 Windows 路径）
+SSH_KEY_PATH="${SSH_KEY_FILE}"
+if echo "\\\$SSH_KEY_PATH" | grep -q '^[A-Za-z]:'; then
+    # Windows 路径，转换为 Unix 格式（如 C:\\Users\\... -> /c/Users/...）
+    # 使用 cygpath 或手动转换 Windows 路径
+    if command -v cygpath > /dev/null 2>&1; then
+        SSH_KEY_PATH=\$(cygpath -u "\\\$SSH_KEY_PATH")
+    else
+        # 手动转换：C:\path\to\file -> /c/path/to/file
+        SSH_KEY_PATH=\$(echo "\\\$SSH_KEY_PATH" | sed 's|\\\\|/|g' | sed 's|^[Cc]:|/c|' | sed 's|^[Dd]:|/d|' | sed 's|^[Ee]:|/e|' | sed 's|^[Ff]:|/f|')
+    fi
+fi
+
 # 将配置文件复制到 K3s 服务器
-scp -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} -r "\\\$DEPLOY_DIR"/* \\
+scp -o StrictHostKeyChecking=no -i "\\\$SSH_KEY_PATH" -r "\\\$DEPLOY_DIR"/* \\
     ${sshUser}@${K3S_HOST}:/tmp/k8s-deploy/
 
 # 在 K3s 服务器上执行部署
-ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} ${sshUser}@${K3S_HOST} bash << K8S_DEPLOY_EOF
+ssh -o StrictHostKeyChecking=no -i "\\\$SSH_KEY_PATH" ${sshUser}@${K3S_HOST} bash << K8S_DEPLOY_EOF
 set -e
 
 export KUBECONFIG=${K3S_KUBECONFIG_PATH}
