@@ -28,15 +28,15 @@ services:
           cpus: '0.1'
 
   api-gateway:
-    image: your-registry/gateway:1.0.0  # 请修改为您的镜像地址
+    image: ${DOCKER_IMAGE:-your-registry/gateway}:${VERSION:-latest}  # 通过环境变量配置镜像版本
     container_name: gateway-service
     ports:
       - "8080:8080"
       - "8443:8443"
     environment:
-      - SPRING_PROFILES_ACTIVE=prod
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
       - GATEWAY_RATELIMIT_ENABLED=true
       - GATEWAY_RATELIMIT_CAPACITY=1000
       - GATEWAY_RATELIMIT_REFILL_RATE=100
