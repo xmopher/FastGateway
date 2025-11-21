@@ -105,7 +105,7 @@ pipeline {
         SPRING_PROFILES_ACTIVE = "${params.SPRING_PROFILES_ACTIVE}"
         
         // Maven 配置
-        MAVEN_OPTS = '-Xmx1024m -XX:MaxPermSize=256m'
+        MAVEN_OPTS = '-Xmx1024m'
         
         // Windows 环境：添加 Git Bash 到 PATH（Jenkins 需要 sh.exe）
         // 注意：PATH 会在 steps 中动态设置，因为 environment 块不支持条件表达式
