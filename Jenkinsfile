@@ -15,9 +15,9 @@ pipeline {
             name: 'DOCKER_TAG',
             defaultValue: ''
         )
-        choice(
+        string(
             name: 'DOCKER_REGISTRY_CREDENTIAL_ID',
-            choices: ['', 'docker-registry']
+            defaultValue: 'acr-user-platform'
         )
         
         // K3s 部署配置
@@ -29,9 +29,9 @@ pipeline {
             name: 'K3S_USER',
             defaultValue: 'ec2-user'
         )
-        choice(
+        string(
             name: 'K3S_SSH_KEY_CREDENTIAL_ID',
-            choices: ['k3s-ssh-key']
+            defaultValue: 'k3s-ssh-key'
         )
         string(
             name: 'K3S_KUBECONFIG_PATH',
@@ -51,9 +51,9 @@ pipeline {
             name: 'REDIS_PORT',
             defaultValue: '6379'
         )
-        choice(
+        string(
             name: 'SPRING_PROFILES_ACTIVE',
-            choices: ['k8s', 'dev', 'prod']
+            defaultValue: 'k8s'
         )
         
         // 部署控制
@@ -108,7 +108,7 @@ pipeline {
         MAVEN_OPTS = '-Xmx1024m -XX:MaxPermSize=256m'
         
         // Windows 环境：添加 Git Bash 到 PATH（Jenkins 需要 sh.exe）
-        PATH = isUnix() ? "${env.PATH}" : "C:\\Program Files\\Git\\bin;C:\\Program Files\\Git\\usr\\bin;${env.PATH}"
+        // 注意：PATH 会在 steps 中动态设置，因为 environment 块不支持条件表达式
     }
 
     options {
@@ -118,6 +118,20 @@ pipeline {
     }
 
     stages {
+        stage('环境配置') {
+            steps {
+                script {
+                    if (!isUnix()) {
+                        // Windows 环境：添加 Git Bash 到 PATH
+                        def gitBinPath = 'C:\\Program Files\\Git\\bin'
+                        def gitUsrBinPath = 'C:\\Program Files\\Git\\usr\\bin'
+                        env.PATH = "${gitBinPath};${gitUsrBinPath};${env.PATH}"
+                        echo "✅ 已添加 Git Bash 到 PATH: ${env.PATH}"
+                    }
+                }
+            }
+        }
+        
         stage('代码检出') {
             steps {
                 script {
