@@ -32,7 +32,11 @@ public class FrontendController {
     private String frontendServiceUrl;
 
     public FrontendController(WebClient.Builder webClientBuilder) {
-        this.webClient = webClientBuilder.build();
+        // Configure WebClient with increased buffer size for large static files (CSS, JS, etc.)
+        // Default is 256KB, we set it to 10MB to handle large frontend assets
+        this.webClient = webClientBuilder
+                .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
+                .build();
     }
 
     /**
