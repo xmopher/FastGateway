@@ -11,3 +11,11 @@ metadata:
   name: services
   labels:
     name: services
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: export-control
+  labels:
+    name: export-control
+    type: business
