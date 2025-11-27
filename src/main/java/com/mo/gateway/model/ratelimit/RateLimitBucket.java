@@ -19,10 +19,12 @@ public final class RateLimitBucket {
         this.lastRefill = lastRefill;
     }
 
+    @JsonProperty("tokens")
     public long tokens() {
         return tokens;
     }
 
+    @JsonProperty("lastRefill")
     public long lastRefill() {
         return lastRefill;
     }
