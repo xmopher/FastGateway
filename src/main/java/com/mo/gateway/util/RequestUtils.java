@@ -43,22 +43,35 @@ public final class RequestUtils {
         return headers;
     }
 
-    /**
-     * Extract query parameters from HttpServletRequest
-     * Uses getParameterMap() which automatically handles URL encoding/decoding
-     */
     private static Map<String, String> extractQueryParams(HttpServletRequest request) {
-        var parameterMap = request.getParameterMap();
-        if (parameterMap == null || parameterMap.isEmpty()) {
+        var queryString = request.getQueryString();
+        if (queryString == null || queryString.isEmpty()) {
             return Map.of();
         }
         var params = new HashMap<String, String>();
-        parameterMap.forEach((key, values) -> {
-            // getParameterMap() returns String[], take the first value if multiple
-            if (values != null && values.length > 0 && values[0] != null) {
-                params.put(key, values[0]);
+        var pairs = queryString.split("&");
+        for (var pair : pairs) {
+            if (pair == null || pair.isEmpty()) {
+                continue;
             }
-        });
+            var keyValue = pair.split("=", 2);
+            try {
+                if (keyValue.length == 2) {
+                    var key = java.net.URLDecoder.decode(keyValue[0], java.nio.charset.StandardCharsets.UTF_8);
+                    var value = java.net.URLDecoder.decode(keyValue[1], java.nio.charset.StandardCharsets.UTF_8);
+                    params.put(key, value);
+                } else if (keyValue.length == 1 && !keyValue[0].isEmpty()) {
+                    var key = java.net.URLDecoder.decode(keyValue[0], java.nio.charset.StandardCharsets.UTF_8);
+                    params.put(key, "");
+                }
+            } catch (Exception e) {
+                if (keyValue.length == 2) {
+                    params.put(keyValue[0], keyValue[1]);
+                } else if (keyValue.length == 1 && !keyValue[0].isEmpty()) {
+                    params.put(keyValue[0], "");
+                }
+            }
+        }
         return params;
     }
 

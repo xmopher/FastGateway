@@ -6,6 +6,7 @@ import org.springframework.http.HttpHeaders;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Utility class for HTTP response processing
@@ -63,11 +64,20 @@ public final class ResponseUtils {
 
     /**
      * Convert Spring HttpHeaders to Map
+     * Filters out headers that should not be forwarded because the response body is already decoded
      */
     public static Map<String, String> convertHeaders(HttpHeaders httpHeaders) {
         var headers = new HashMap<String, String>();
+        // Headers that should not be forwarded since body is already decoded by WebClient
+        var excludedHeaders = Set.of(
+                "content-encoding",  // Body is already decoded, don't forward encoding header
+                "transfer-encoding", // Body is already decoded, don't forward transfer encoding
+                "content-length",    // Will be recalculated by Spring based on actual body size
+                "connection"         // Connection management header, not needed for client
+        );
+
         httpHeaders.forEach((key, values) -> {
-            if (!values.isEmpty()) {
+            if (!values.isEmpty() && !excludedHeaders.contains(key.toLowerCase())) {
                 headers.put(key, values.get(0));
             }
         });
