@@ -76,7 +76,10 @@ public class GatewayService {
         var lbRequest = new LoadBalancerRequest(serviceId, request, null);
         return loadBalancerService.selectInstance(lbRequest)
                 .thenCompose(instance -> forwardRequest(request, instance))
-                .exceptionally(this::handleError);
+                .exceptionally(throwable -> {
+                    log.error("Error in processAllowedRequest for path: {}", request.path(), throwable);
+                    return handleError(throwable);
+                });
     }
 
     private CompletableFuture<GatewayResponse> forwardRequest(GatewayRequest request, ServiceInstance instance) {
@@ -91,14 +94,26 @@ public class GatewayService {
                 .toEntity(byte[].class)
                 .timeout(Duration.ofSeconds(30))
                 .toFuture()
-                .thenApply(responseEntity -> new GatewayResponse(
-                        responseEntity.getStatusCode().value(),
-                        ResponseUtils.convertHeaders(responseEntity.getHeaders()),
-                        responseEntity.getBody(),
-                        System.currentTimeMillis(),
-                        instance.id(),
-                        0L
-                ));
+                .thenApply(responseEntity -> {
+                    var statusCode = responseEntity.getStatusCode().value();
+                    var responseBody = responseEntity.getBody();
+                    // Handle null response body - some endpoints may return empty body
+                    var body = responseBody != null ? responseBody : new byte[0];
+                    log.debug("Received response: status={}, bodySize={} bytes from instance: {}",
+                            statusCode, body.length, instance.id());
+                    return new GatewayResponse(
+                            statusCode,
+                            ResponseUtils.convertHeaders(responseEntity.getHeaders()),
+                            body,
+                            System.currentTimeMillis(),
+                            instance.id(),
+                            0L
+                    );
+                })
+                .exceptionally(throwable -> {
+                    log.error("Error forwarding request to {}: {}", targetUrl, throwable.getMessage(), throwable);
+                    return handleError(throwable);
+                });
     }
 
     private String extractServiceId(String path) {
