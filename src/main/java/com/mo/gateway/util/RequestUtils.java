@@ -45,20 +45,20 @@ public final class RequestUtils {
 
     /**
      * Extract query parameters from HttpServletRequest
+     * Uses getParameterMap() which automatically handles URL encoding/decoding
      */
     private static Map<String, String> extractQueryParams(HttpServletRequest request) {
-        var queryString = request.getQueryString();
-        if (queryString == null) {
+        var parameterMap = request.getParameterMap();
+        if (parameterMap == null || parameterMap.isEmpty()) {
             return Map.of();
         }
         var params = new HashMap<String, String>();
-        var pairs = queryString.split("&");
-        for (var pair : pairs) {
-            var keyValue = pair.split("=", 2);
-            if (keyValue.length == 2) {
-                params.put(keyValue[0], keyValue[1]);
+        parameterMap.forEach((key, values) -> {
+            // getParameterMap() returns String[], take the first value if multiple
+            if (values != null && values.length > 0 && values[0] != null) {
+                params.put(key, values[0]);
             }
-        }
+        });
         return params;
     }
 
