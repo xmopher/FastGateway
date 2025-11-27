@@ -91,35 +91,42 @@ public class KubernetesServiceDiscovery implements ServiceDiscoveryService {
             log.debug("No endpoints found for service: {}", serviceId);
             return;
         }
+        // Use Service DNS name instead of Pod IP for better network compatibility
+        var serviceHost = STR."\{serviceName}.\{namespace}.svc.cluster.local";
+        // Use Service port (not Endpoints port) - Service port is what clients should connect to
+        var servicePort = service.getSpec().getPorts().isEmpty() 
+                ? config.servicePort() 
+                : service.getSpec().getPorts().get(0).getPort();
         var instances = new ConcurrentHashMap<String, ServiceInstance>();
-        for (var subset : endpoints.getSubsets()) {
-            for (var address : subset.getAddresses()) {
-                var instanceId = STR."\{serviceId}-\{address.getIp().replace(".", "-")}";
-                var port = subset.getPorts().isEmpty() ? config.servicePort() : subset.getPorts().get(0).getPort();
-                var instance = ServiceInstance.builder()
-                        .id(instanceId)
-                        .serviceId(serviceId)
-                        .host(address.getIp())
-                        .port(port)
-                        .protocol("http")
-                        .healthStatus(HealthStatus.HEALTHY)
-                        .metadata(createMetadata(namespace, serviceName, address))
-                        .lastHealthCheck(System.currentTimeMillis())
-                        .build();
-                instances.put(instanceId, instance);
-                log.debug("Discovered instance: {} -> {}:{}", serviceId, address.getIp(), port);
-            }
+        // Only create instance if endpoints exist (service has healthy pods)
+        if (!endpoints.getSubsets().isEmpty()) {
+            // Create a single instance per service (using Service DNS, not individual Pod IPs)
+            var instanceId = STR."\{serviceId}-service";
+            var instance = ServiceInstance.builder()
+                    .id(instanceId)
+                    .serviceId(serviceId)
+                    .host(serviceHost)
+                    .port(servicePort)
+                    .protocol("http")
+                    .healthStatus(HealthStatus.HEALTHY)
+                    .metadata(createMetadata(namespace, serviceName, null))
+                    .lastHealthCheck(System.currentTimeMillis())
+                    .build();
+            instances.put(instanceId, instance);
+            log.debug("Discovered instance: {} -> {}:{}", serviceId, serviceHost, servicePort);
         }
         serviceRegistry.put(serviceId, instances);
     }
 
     private Map<String, String> createMetadata(String namespace, String serviceName, EndpointAddress address) {
-        return Map.of(
-                "kubernetes.namespace", namespace,
-                "kubernetes.service", serviceName,
-                "kubernetes.pod", address.getTargetRef() != null ? address.getTargetRef().getName() : "unknown",
-                "discovery.type", "kubernetes"
-        );
+        var metadata = new java.util.HashMap<String, String>();
+        metadata.put("kubernetes.namespace", namespace);
+        metadata.put("kubernetes.service", serviceName);
+        metadata.put("discovery.type", "kubernetes");
+        if (address != null && address.getTargetRef() != null) {
+            metadata.put("kubernetes.pod", address.getTargetRef().getName());
+        }
+        return metadata;
     }
 
     private String extractServiceId(io.fabric8.kubernetes.api.model.Service service) {
