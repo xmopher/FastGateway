@@ -45,17 +45,29 @@ public class GatewayController {
                 gatewayRequest.getClientIdentifier());
         return gatewayService.processRequest(gatewayRequest)
                 .thenApply(this::toResponseEntity)
-                .exceptionally(this::handleException);
+                .exceptionally(throwable -> {
+                    log.error("Exception in handleRequest for {} {}", 
+                            gatewayRequest.method(), gatewayRequest.path(), throwable);
+                    return handleException(throwable);
+                });
     }
 
     private ResponseEntity<byte[]> toResponseEntity(GatewayResponse gatewayResponse) {
-        var builder = ResponseEntity.status(gatewayResponse.statusCode());
-        if (gatewayResponse.headers() != null) {
-            gatewayResponse.headers().forEach(builder::header);
+        try {
+            var builder = ResponseEntity.status(gatewayResponse.statusCode());
+            if (gatewayResponse.headers() != null) {
+                gatewayResponse.headers().forEach(builder::header);
+            }
+            builder.header("X-Gateway-Instance", gatewayResponse.instanceId());
+            builder.header("X-Gateway-Processing-Time", String.valueOf(gatewayResponse.processingTimeMs()));
+            // Handle null body - use empty array if body is null
+            var body = gatewayResponse.body() != null ? gatewayResponse.body() : new byte[0];
+            log.debug("Building response: status={}, bodySize={} bytes", gatewayResponse.statusCode(), body.length);
+            return builder.body(body);
+        } catch (Exception e) {
+            log.error("Error converting GatewayResponse to ResponseEntity", e);
+            throw new RuntimeException("Failed to build response entity", e);
         }
-        builder.header("X-Gateway-Instance", gatewayResponse.instanceId());
-        builder.header("X-Gateway-Processing-Time", String.valueOf(gatewayResponse.processingTimeMs()));
-        return builder.body(gatewayResponse.body());
     }
 
     private ResponseEntity<byte[]> handleException(Throwable throwable) {
