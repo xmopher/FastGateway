@@ -44,16 +44,38 @@ public class GatewayController {
                 gatewayRequest.path(),
                 gatewayRequest.getClientIdentifier());
         return gatewayService.processRequest(gatewayRequest)
-                .thenApply(this::toResponseEntity)
+                .thenApply(gatewayResponse -> {
+                    log.debug("About to convert GatewayResponse to ResponseEntity");
+                    try {
+                        var responseEntity = toResponseEntity(gatewayResponse);
+                        log.debug("Successfully converted to ResponseEntity, status={}", responseEntity.getStatusCode());
+                        return responseEntity;
+                    } catch (Exception e) {
+                        log.error("Exception in toResponseEntity conversion", e);
+                        throw e;
+                    }
+                })
                 .exceptionally(throwable -> {
-                    log.error("Exception in handleRequest for {} {}", 
-                            gatewayRequest.method(), gatewayRequest.path(), throwable);
+                    log.error("Exception in handleRequest for {} {}: {}", 
+                            gatewayRequest.method(), gatewayRequest.path(), throwable.getMessage(), throwable);
                     return handleException(throwable);
                 });
     }
 
     private ResponseEntity<byte[]> toResponseEntity(GatewayResponse gatewayResponse) {
         try {
+            log.debug("toResponseEntity called: status={}, headers={}, bodySize={}", 
+                    gatewayResponse.statusCode(), 
+                    gatewayResponse.headers() != null ? gatewayResponse.headers().size() : 0,
+                    gatewayResponse.body() != null ? gatewayResponse.body().length : 0);
+            
+            // Log all response headers for debugging
+            if (gatewayResponse.headers() != null && log.isDebugEnabled()) {
+                gatewayResponse.headers().forEach((key, value) -> {
+                    log.debug("Response header: {} = {}", key, value);
+                });
+            }
+            
             var builder = ResponseEntity.status(gatewayResponse.statusCode());
             if (gatewayResponse.headers() != null) {
                 gatewayResponse.headers().forEach(builder::header);
@@ -63,9 +85,12 @@ public class GatewayController {
             // Handle null body - use empty array if body is null
             var body = gatewayResponse.body() != null ? gatewayResponse.body() : new byte[0];
             log.debug("Building response: status={}, bodySize={} bytes", gatewayResponse.statusCode(), body.length);
-            return builder.body(body);
+            
+            var responseEntity = builder.body(body);
+            log.debug("ResponseEntity created successfully");
+            return responseEntity;
         } catch (Exception e) {
-            log.error("Error converting GatewayResponse to ResponseEntity", e);
+            log.error("Error converting GatewayResponse to ResponseEntity: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to build response entity", e);
         }
     }
