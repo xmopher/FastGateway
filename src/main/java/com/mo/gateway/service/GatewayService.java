@@ -15,6 +15,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
@@ -78,7 +80,7 @@ public class GatewayService {
     }
 
     private CompletableFuture<GatewayResponse> forwardRequest(GatewayRequest request, ServiceInstance instance) {
-        var targetUrl = buildTargetUrl(instance, request.path());
+        var targetUrl = buildTargetUrl(instance, request);
         log.debug("Forwarding to: {}", targetUrl);
         return webClient
                 .method(HttpMethod.valueOf(request.method()))
@@ -108,10 +110,29 @@ public class GatewayService {
         return "default";
     }
 
-    private String buildTargetUrl(ServiceInstance instance, String path) {
+    private String buildTargetUrl(ServiceInstance instance, GatewayRequest request) {
         // Remove /api/service-name prefix and forward to instance
+        var path = request.path();
         var cleanPath = path.replaceFirst("/api/[^/]+", "");
-        return STR."\{instance.getUrl()}\{cleanPath}";
+        var baseUrl = STR."\{instance.getUrl()}\{cleanPath}";
+
+        // Add query parameters if present
+        if (request.queryParams() != null && !request.queryParams().isEmpty()) {
+            var queryString = request.queryParams().entrySet().stream()
+                    .map(entry -> {
+                        var key = URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8);
+                        var value = entry.getValue() != null
+                                ? URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8)
+                                : "";
+                        return STR."\{key}=\{value}";
+                    })
+                    .reduce((a, b) -> STR."\{a}&\{b}")
+                    .orElse("");
+            if (!queryString.isEmpty()) {
+                return STR."\{baseUrl}?\{queryString}";
+            }
+        }
+        return baseUrl;
     }
 
     private void addHeaders(HttpHeaders headers, GatewayRequest request) {
