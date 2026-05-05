@@ -5,6 +5,7 @@ import com.mo.gateway.model.loadbalancer.LoadBalancerRequest;
 import com.mo.gateway.model.loadbalancer.ServiceInstance;
 import com.mo.gateway.model.ratelimit.RateLimitResult;
 import com.mo.gateway.model.dto.GatewayRequest;
+import com.mo.gateway.service.auth.RouteAuthService;
 import com.mo.gateway.service.loadbalancer.LoadBalancerService;
 import com.mo.gateway.service.ratelimit.RateLimiterService;
 import com.mo.gateway.util.ResponseUtils;
@@ -38,11 +39,17 @@ public class GatewayService {
 
     private final LoadBalancerService loadBalancerService;
 
+    private final RouteAuthService routeAuthService;
+
     private final WebClient webClient;
 
-    public GatewayService(RateLimiterService rateLimiterService, LoadBalancerService loadBalancerService, WebClient webClient) {
+    public GatewayService(RateLimiterService rateLimiterService,
+                          LoadBalancerService loadBalancerService,
+                          RouteAuthService routeAuthService,
+                          WebClient webClient) {
         this.rateLimiterService = rateLimiterService;
         this.loadBalancerService = loadBalancerService;
+        this.routeAuthService = routeAuthService;
         this.webClient = webClient;
     }
 
@@ -72,13 +79,22 @@ public class GatewayService {
     }
 
     private CompletableFuture<GatewayResponse> processAllowedRequest(GatewayRequest request) {
-        var serviceId = extractServiceId(request.path());
-        var lbRequest = new LoadBalancerRequest(serviceId, request, null);
-        return loadBalancerService.selectInstance(lbRequest)
-                .thenCompose(instance -> forwardRequest(request, instance))
-                .exceptionally(throwable -> {
-                    log.error("Error in processAllowedRequest for path: {}", request.path(), throwable);
-                    return handleError(throwable);
+        return routeAuthService.authenticate(request)
+                .thenCompose(authResult -> {
+                    if (authResult.isPresent() && !authResult.get().success()) {
+                        log.warn("Auth failed for path: {} reason: {}",
+                                request.path(), authResult.get().errorMessage());
+                        return CompletableFuture.completedFuture(
+                                ResponseUtils.createUnauthorizedResponse(authResult.get()));
+                    }
+                    var serviceId = extractServiceId(request.path());
+                    var lbRequest = new LoadBalancerRequest(serviceId, request, null);
+                    return loadBalancerService.selectInstance(lbRequest)
+                            .thenCompose(instance -> forwardRequest(request, instance))
+                            .exceptionally(throwable -> {
+                                log.error("Error in processAllowedRequest for path: {}", request.path(), throwable);
+                                return handleError(throwable);
+                            });
                 });
     }
 
