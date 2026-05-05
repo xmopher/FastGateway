@@ -44,6 +44,30 @@ public final class ResponseUtils {
     }
 
     /**
+     * Create authentication failure response (401 / 503)
+     */
+    public static GatewayResponse createUnauthorizedResponse(com.mo.gateway.model.auth.AuthenticationResult result) {
+        var statusCode = result.errorCode() > 0 ? result.errorCode() : 401;
+        var headers = Map.of(
+                "Content-Type", "application/json",
+                "WWW-Authenticate", "Bearer realm=\"gateway\""
+        );
+        var body = STR."""
+            {
+                "error": "\{statusCode == 401 ? "Unauthorized" : "Auth Plugin Unavailable"}",
+                "message": "\{result.errorMessage()}",
+                "provider": "\{result.providerName()}",
+                "timestamp": \{System.currentTimeMillis()}
+            }
+            """;
+        return GatewayResponse.builder()
+                .statusCode(statusCode)
+                .headers(headers)
+                .body(body.getBytes())
+                .build();
+    }
+
+    /**
      * Create generic error response
      */
     public static GatewayResponse createErrorResponse(int statusCode, String message) {

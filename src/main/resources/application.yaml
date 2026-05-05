@@ -100,6 +100,13 @@ gateway:
       apikey:
         cache-enabled: ${APIKEY_CACHE_ENABLED:true}
         cache-expiration-minutes: ${APIKEY_CACHE_EXPIRATION_MINUTES:30}
+    route-rules:
+      - path: /api/user-service/**
+        plugin: jwt-auth
+      - path: /api/order-service/**
+        plugin: jwt-auth
+      - path: /api/open-api/**
+        plugin: none
 
 # Management and Monitoring
 management:
